@@ -32,23 +32,20 @@ if hash_password(password) not in [ADMIN_HASH, USER_HASH]:
 # ---------------------------------------------------------
 # IF LOGIN SUCCESSFUL, APP STARTS HERE
 # ---------------------------------------------------------
-
 st.sidebar.success(f"Logged in as {user_role}")
-
-# --- GLOBAL DISCLAIMER ---
-st.warning("⚠️ **DISCLAIMER**: This AI tool is for EDUCATIONAL PURPOSES only. Trading involves risk.")
+st.warning("⚠️ **DISCLAIMER**: This AI tool is for EDUCATIONAL PURPOSES only.")
 
 # 3. AI PROCESSING FUNCTION
 def process_stock(ticker, days):
     try:
         # Data Download
         data = yf.download(ticker, period=f'{days}d')
-        if data.empty: 
+        if data.empty or len(data) < 30: 
             return None
         
         data = data.astype(float)
         
-        # --- MACD Calculation (Must be before dropna) ---
+        # --- MACD Calculation (Fixed Logic) ---
         exp1 = data['Close'].ewm(span=12, adjust=False).mean()
         exp2 = data['Close'].ewm(span=26, adjust=False).mean()
         data['MACD'] = exp1 - exp2
@@ -65,8 +62,8 @@ def process_stock(ticker, days):
         rs = gain / loss
         data['RSI'] = 100 - (100 / (1 + rs))
         
-        # Prepare AI Model
-        df_clean = data.dropna()
+        # Clean data for AI training
+        df_clean = data.dropna().copy()
         if df_clean.empty:
             return None
             
@@ -81,27 +78,25 @@ def process_stock(ticker, days):
         curr_val = float(last_val['Close'])
         acc = model.score(X, y)
         
-        # RETURN ALL DATA (Crucial to avoid KeyError)
+        # Return all calculated data
         return data, df_clean, pred_val, curr_val, acc
         
     except Exception as e:
-        st.error(f"Error processing {ticker}: {e}")
+        st.sidebar.error(f"Error: {e}")
         return None
 
-# 4. ADMIN DASHBOARD LOGIC
+# 4. ADMIN DASHBOARD
 if user_role == "Admin" and hash_password(password) == ADMIN_HASH:
     st.title("👨‍✈️ Admin Central Control")
-    st.subheader("Global Market Overview (Admin Only)")
-    
-    track_list = ["AAPL", "TSLA", "SBIN.NS", "BTC-USD"]
+    track_list = ["AAPL", "TSLA", "BTC-USD", "RELIANCE.NS"]
     cols = st.columns(4)
     for i, t in enumerate(track_list):
         result = process_stock(t, 200)
         if result:
-            data_admin, df_admin, pred_admin, curr_admin, acc_admin = result
-            cols[i].metric(t, f"${curr_admin:.2f}", f"AI: ${pred_admin:.2f}")
-    
-# 5. USER / MAIN APP LOGIC
+            d, dfc, pv, cv, ac = result
+            cols[i].metric(t, f"${cv:.2f}", f"AI: ${pv:.2f}")
+
+# 5. USER MAIN APP
 st.title("⚔️ AI Stock Battle - Secure Portal")
 ticker1 = st.sidebar.text_input("Stock 1", value="GOOGL")
 ticker2 = st.sidebar.text_input("Stock 2", value="TSLA")
@@ -129,27 +124,18 @@ if st.sidebar.button("Run AI Analysis"):
                 # Professional Plotly Chart
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                    vertical_spacing=0.1, row_width=[0.3, 0.7])
-                
-                fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], 
-                                           high=data['High'], low=data['Low'], 
-                                           close=data['Close'], name="Price"), row=1, col=1)
-                
-                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['MA50'], 
-                                       name='MA50', line=dict(color='yellow')), row=1, col=1)
-                
-                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['RSI'], 
-                                       name='RSI', line=dict(color='magenta')), row=2, col=1)
-                
-                fig.update_layout(template="plotly_dark", height=500, 
-                                 xaxis_rangeslider_visible=False, showlegend=False)
-
+                fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['MA50'], name='MA50', line=dict(color='yellow')), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['RSI'], name='RSI', line=dict(color='magenta')), row=2, col=1)
+                fig.update_layout(template="plotly_dark", height=450, xaxis_rangeslider_visible=False, showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- MACD VISUALIZATION (Line 152 Fix) ---
-                if 'MACD' in data.columns:
+                # --- MACD VISUALIZATION (Fixed for Line 152) ---
+                if 'MACD' in data.columns and 'Signal_Line' in data.columns:
                     st.write("---")
                     st.subheader("🛠️ MACD Trend Analysis")
+                    # Double brackets are essential for multi-column line charts
                     st.line_chart(data[['MACD', 'Signal_Line']])
                     st.bar_chart(data['MACD'] - data['Signal_Line'])
         else:
-            current_col.error(f"Could not fetch data for {t}.")
+            current_col.error(f"Data not found for {t}")
