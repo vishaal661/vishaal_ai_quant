@@ -48,8 +48,7 @@ def process_stock(ticker, days):
         
         data = data.astype(float)
         
-        # --- MACD Calculation ---
-        # 12-day EMA vs 26-day EMA logic
+        # --- MACD Calculation (Must be before dropna) ---
         exp1 = data['Close'].ewm(span=12, adjust=False).mean()
         exp2 = data['Close'].ewm(span=26, adjust=False).mean()
         data['MACD'] = exp1 - exp2
@@ -82,7 +81,7 @@ def process_stock(ticker, days):
         curr_val = float(last_val['Close'])
         acc = model.score(X, y)
         
-        # RETURN ALL DATA
+        # RETURN ALL DATA (Properly Unpacked later)
         return data, df_clean, pred_val, curr_val, acc
         
     except Exception as e:
@@ -99,9 +98,8 @@ if user_role == "Admin" and hash_password(password) == ADMIN_HASH:
     for i, t in enumerate(track_list):
         result = process_stock(t, 200)
         if result:
-            # Unpacking the 5 returned values
-            data, df_clean, pred_val, curr_val, acc = result
-            cols[i].metric(t, f"${curr_val:.2f}", f"AI: ${pred_val:.2f}")
+            data_admin, df_admin, pred_admin, curr_admin, acc_admin = result
+            cols[i].metric(t, f"${curr_admin:.2f}", f"AI: ${pred_admin:.2f}")
     
 # 5. USER / MAIN APP LOGIC
 st.title("⚔️ AI Stock Battle - Secure Portal")
@@ -128,7 +126,7 @@ if st.sidebar.button("Run AI Analysis"):
                 elif diff > 0: st.warning("⚖️ HOLD")
                 else: st.error("⚠️ SELL/AVOID")
 
-                # Professional Plotly Chart (Candlestick + RSI)
+                # Professional Plotly Chart
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                    vertical_spacing=0.1, row_width=[0.3, 0.7])
                 
@@ -147,14 +145,11 @@ if st.sidebar.button("Run AI Analysis"):
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- MACD VISUALIZATION ---
-                st.write("---")
-                st.subheader("🛠️ MACD Trend Analysis")
-                
-                # Plot MACD and Signal Lines
-                st.line_chart(data[['MACD', 'Signal_Line']])
-                
-                # Plot Histogram (The gap between MACD and Signal)
-                st.bar_chart(data['MACD'] - data['Signal_Line'])
+                # --- MACD VISUALIZATION (Fix for Line 155 Error) ---
+                if 'MACD' in data.columns and 'Signal_Line' in data.columns:
+                    st.write("---")
+                    st.subheader("🛠️ MACD Trend Analysis")
+                    st.line_chart(data[['MACD', 'Signal_Line']])
+                    st.bar_chart(data['MACD'] - data['Signal_Line'])
         else:
-            current_col.error(f"Could not fetch data for {t}. Check the ticker symbol.")
+            current_col.error(f"Could not fetch data for {t}. Try another ticker.")
