@@ -81,11 +81,11 @@ def process_stock(ticker, days):
         curr_val = float(last_val['Close'])
         acc = model.score(X, y)
         
-        # RETURN ALL DATA (Properly Unpacked later)
+        # RETURN ALL DATA (Crucial to avoid KeyError)
         return data, df_clean, pred_val, curr_val, acc
         
     except Exception as e:
-        print(f"Error processing {ticker}: {e}")
+        st.error(f"Error processing {ticker}: {e}")
         return None
 
 # 4. ADMIN DASHBOARD LOGIC
@@ -145,11 +145,11 @@ if st.sidebar.button("Run AI Analysis"):
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- MACD VISUALIZATION (Fix for Line 155 Error) ---
-                if 'MACD' in data.columns and 'Signal_Line' in data.columns:
+                # --- MACD VISUALIZATION (Line 152 Fix) ---
+                if 'MACD' in data.columns:
                     st.write("---")
                     st.subheader("🛠️ MACD Trend Analysis")
                     st.line_chart(data[['MACD', 'Signal_Line']])
                     st.bar_chart(data['MACD'] - data['Signal_Line'])
         else:
-            current_col.error(f"Could not fetch data for {t}. Try another ticker.")
+            current_col.error(f"Could not fetch data for {t}.")
