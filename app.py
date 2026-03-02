@@ -48,9 +48,6 @@ def process_stock(ticker, days):
         data['MACD'] = exp1 - exp2
         data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
 
-# Displaying MACD Chart
-st.subheader("MACD Indicator")
-st.line_chart(data[['MACD', 'Signal_Line']])
         if data.empty: return None
         
         data = data.astype(float)
@@ -125,3 +122,9 @@ if st.sidebar.button("Run AI Analysis"):
                 fig.update_layout(template="plotly_dark", height=500, xaxis_rangeslider_visible=False, showlegend=False)
 
                 st.plotly_chart(fig, use_container_width=True)
+                # MACD Visualization (Add this after plotly_chart)
+                st.write("---")
+                st.subheader("MACD Trend Analysis")
+                st.line_chart(data[['MACD', 'Signal_Line']])
+                st.bar_chart(data['MACD'] - data['Signal_Line'])
+
