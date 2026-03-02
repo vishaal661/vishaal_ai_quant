@@ -138,7 +138,8 @@ if st.sidebar.button("Run AI Analysis"):
                     st.line_chart(data[['MACD', 'Signal_Line']])
                     st.bar_chart(data['MACD'] - data['Signal_Line'])
                 else:
-                    st.info("MACD" columns not found. Please check.")
+                    st.info("MACD" columns not found. Please check function return.")
         else:
             current_col.error(f"Data not found for {t}")
+
 
