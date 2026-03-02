@@ -42,6 +42,15 @@ st.warning("⚠️ **DISCLAIMER**: This AI tool is for EDUCATIONAL PURPOSES only
 def process_stock(ticker, days):
     try:
         data = yf.download(ticker, period=f'{days}d')
+        # MACD Calculation
+        exp1 = data['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = data['Close'].ewm(span=26, adjust=False).mean()
+        data['MACD'] = exp1 - exp2
+        data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
+
+# Displaying MACD Chart
+st.subheader("MACD Indicator")
+st.line_chart(data[['MACD', 'Signal_Line']])
         if data.empty: return None
         
         data = data.astype(float)
@@ -114,4 +123,5 @@ if st.sidebar.button("Run AI Analysis"):
                 fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['MA50'], name='MA50', line=dict(color='yellow')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['RSI'], name='RSI', line=dict(color='magenta')), row=2, col=1)
                 fig.update_layout(template="plotly_dark", height=500, xaxis_rangeslider_visible=False, showlegend=False)
+
                 st.plotly_chart(fig, use_container_width=True)
