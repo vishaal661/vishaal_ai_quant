@@ -12,7 +12,7 @@ st.set_page_config(page_title="AI Secure Quant v5.0", layout="wide")
 def hash_password(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
-# Passwords (Neenga mathikalaam)
+# Passwords
 ADMIN_HASH = hash_password("vishaal_admin")
 USER_HASH = hash_password("user123")
 
@@ -41,16 +41,21 @@ st.warning("⚠️ **DISCLAIMER**: This AI tool is for EDUCATIONAL PURPOSES only
 # 3. AI PROCESSING FUNCTION
 def process_stock(ticker, days):
     try:
+        # Data Download
         data = yf.download(ticker, period=f'{days}d')
-        # MACD Calculation
+        if data.empty: 
+            return None
+        
+        data = data.astype(float)
+        
+        # --- MACD Calculation ---
+        # 12-day EMA vs 26-day EMA logic
         exp1 = data['Close'].ewm(span=12, adjust=False).mean()
         exp2 = data['Close'].ewm(span=26, adjust=False).mean()
         data['MACD'] = exp1 - exp2
         data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
 
-        if data.empty: return None
-        
-        data = data.astype(float)
+        # Features for AI
         data['Day'] = np.arange(len(data))
         data['MA50'] = data['Close'].rolling(window=50).mean()
         
@@ -61,19 +66,27 @@ def process_stock(ticker, days):
         rs = gain / loss
         data['RSI'] = 100 - (100 / (1 + rs))
         
+        # Prepare AI Model
         df_clean = data.dropna()
+        if df_clean.empty:
+            return None
+            
         X = df_clean[['Day', 'MA50', 'RSI']]
         y = df_clean['Close']
         model = LinearRegression().fit(X, y)
         
+        # Predictions
         last_val = df_clean.iloc[-1]
         prediction = model.predict([[float(len(data)), float(last_val['MA50']), float(last_val['RSI'])]])
         pred_val = float(prediction.flatten()[0])
         curr_val = float(last_val['Close'])
         acc = model.score(X, y)
         
+        # RETURN ALL DATA
         return data, df_clean, pred_val, curr_val, acc
-    except:
+        
+    except Exception as e:
+        print(f"Error processing {ticker}: {e}")
         return None
 
 # 4. ADMIN DASHBOARD LOGIC
@@ -81,13 +94,14 @@ if user_role == "Admin" and hash_password(password) == ADMIN_HASH:
     st.title("👨‍✈️ Admin Central Control")
     st.subheader("Global Market Overview (Admin Only)")
     
-    # Example: Tracking multiple stocks at once
     track_list = ["AAPL", "TSLA", "SBIN.NS", "BTC-USD"]
     cols = st.columns(4)
     for i, t in enumerate(track_list):
-        res = process_stock(t, 200)
-        if res:
-            cols[i].metric(t, f"${res[2]:.2f}")
+        result = process_stock(t, 200)
+        if result:
+            # Unpacking the 5 returned values
+            data, df_clean, pred_val, curr_val, acc = result
+            cols[i].metric(t, f"${curr_val:.2f}", f"AI: ${pred_val:.2f}")
     
 # 5. USER / MAIN APP LOGIC
 st.title("⚔️ AI Stock Battle - Secure Portal")
@@ -114,17 +128,33 @@ if st.sidebar.button("Run AI Analysis"):
                 elif diff > 0: st.warning("⚖️ HOLD")
                 else: st.error("⚠️ SELL/AVOID")
 
-                # Professional Plotly Chart
-                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_width=[0.3, 0.7])
-                fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['MA50'], name='MA50', line=dict(color='yellow')), row=1, col=1)
-                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['RSI'], name='RSI', line=dict(color='magenta')), row=2, col=1)
-                fig.update_layout(template="plotly_dark", height=500, xaxis_rangeslider_visible=False, showlegend=False)
+                # Professional Plotly Chart (Candlestick + RSI)
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                                   vertical_spacing=0.1, row_width=[0.3, 0.7])
+                
+                fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], 
+                                           high=data['High'], low=data['Low'], 
+                                           close=data['Close'], name="Price"), row=1, col=1)
+                
+                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['MA50'], 
+                                       name='MA50', line=dict(color='yellow')), row=1, col=1)
+                
+                fig.add_trace(go.Scatter(x=df_clean.index, y=df_clean['RSI'], 
+                                       name='RSI', line=dict(color='magenta')), row=2, col=1)
+                
+                fig.update_layout(template="plotly_dark", height=500, 
+                                 xaxis_rangeslider_visible=False, showlegend=False)
 
                 st.plotly_chart(fig, use_container_width=True)
-                # MACD Visualization (Add this after plotly_chart)
-                st.write("---")
-                st.subheader("MACD Trend Analysis")
-                st.line_chart(data[['MACD', 'Signal_Line']])
-                st.bar_chart(data['MACD'] - data['Signal_Line'])
 
+                # --- MACD VISUALIZATION ---
+                st.write("---")
+                st.subheader("🛠️ MACD Trend Analysis")
+                
+                # Plot MACD and Signal Lines
+                st.line_chart(data[['MACD', 'Signal_Line']])
+                
+                # Plot Histogram (The gap between MACD and Signal)
+                st.bar_chart(data['MACD'] - data['Signal_Line'])
+        else:
+            current_col.error(f"Could not fetch data for {t}. Check the ticker symbol.")
