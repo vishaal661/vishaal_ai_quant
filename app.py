@@ -31,34 +31,32 @@ if hash_password(password) not in [ADMIN_HASH, USER_HASH]:
 # 3. AI PROCESSING FUNCTION
 def process_stock(ticker, days):
     try:
-        # Download Data
-        data = yf.download(ticker, period=f'{days}d', interval='1d', progress=False)
+        # Ticker check to avoid GOOGL empty data error
+        raw_data = yf.download(ticker, period=f'{days}d', interval='1d', progress=False)
         
-        # Check if data is valid and large enough
-        if data.empty or len(data) < 30:
+        if raw_data.empty or len(raw_data) < 35: # Minimum 35 days for stable MACD/MA
             return None
         
-        data = data.astype(float)
+        df = raw_data.copy().astype(float)
         
-        # --- MACD Calculation ---
-        exp1 = data['Close'].ewm(span=12, adjust=False).mean()
-        exp2 = data['Close'].ewm(span=26, adjust=False).mean()
-        data['MACD'] = exp1 - exp2
-        data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
+        # --- MACD Calculation (Fixed) ---
+        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp1 - exp2
+        df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-        # AI Features
-        data['Day'] = np.arange(len(data))
-        data['MA50'] = data['Close'].rolling(window=50).mean()
+        # Features
+        df['Day'] = np.arange(len(df))
+        df['MA50'] = df['Close'].rolling(window=50).mean()
         
         # RSI Logic
-        delta = data['Close'].diff()
+        delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
-        data['RSI'] = 100 - (100 / (1 + rs))
+        df['RSI'] = 100 - (100 / (1 + rs))
         
-        # Training Data Prep
-        df_clean = data.dropna().copy()
+        df_clean = df.dropna().copy()
         if df_clean.empty:
             return None
             
@@ -66,14 +64,12 @@ def process_stock(ticker, days):
         y = df_clean['Close']
         model = LinearRegression().fit(X, y)
         
-        # Prediction Logic
         last_val = df_clean.iloc[-1]
-        prediction = model.predict([[float(len(data)), float(last_val['MA50']), float(last_val['RSI'])]])
+        prediction = model.predict([[float(len(df)), float(last_val['MA50']), float(last_val['RSI'])]])
         
-        # RETURN EVERYTHING
+        # Dictionary structure to prevent KeyError
         return {
-            'df': data, 
-            'clean': df_clean, 
+            'full_df': df, 
             'pred': float(prediction.flatten()[0]), 
             'curr': float(last_val['Close'])
         }
@@ -94,7 +90,8 @@ if st.sidebar.button("Run AI Analysis"):
         current_col = col_a if i == 0 else col_b
         
         if result:
-            df = result['df']
+            # Result extraction
+            stock_df = result['full_df']
             pred_val = result['pred']
             curr_val = result['curr']
             diff = ((pred_val - curr_val) / curr_val) * 100
@@ -103,18 +100,22 @@ if st.sidebar.button("Run AI Analysis"):
                 st.header(f"📊 {t}")
                 st.metric("Predicted Price", f"${pred_val:.2f}", f"{diff:.2f}%")
                 
-                # Candlestick Chart
-                fig = go.Figure(data=[go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
-                fig.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False)
+                # Main Price Chart
+                fig = go.Figure(data=[go.Candlestick(x=stock_df.index, open=stock_df['Open'], high=stock_df['High'], low=stock_df['Low'], close=stock_df['Close'])])
+                fig.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- MACD VISUALIZATION (Safe Mode) ---
-                # Check column existence before indexing to avoid KeyError
-                if 'MACD' in df.columns and 'Signal_Line' in df.columns:
+                # --- MACD VISUALIZATION (Fixed Safety Check) ---
+                # This prevents the KeyError at Line 117
+                if 'MACD' in stock_df.columns and 'Signal_Line' in stock_df.columns:
                     st.write("---")
                     st.subheader("🛠️ MACD Trend Analysis")
-                    # Using dataframe directly to ensure columns exist
-                    st.line_chart(df[['MACD', 'Signal_Line']])
-                    st.bar_chart(df['MACD'] - df['Signal_Line'])
+                    # Explicit column check
+                    macd_data = stock_df[['MACD', 'Signal_Line']].dropna()
+                    if not macd_data.empty:
+                        st.line_chart(macd_data)
+                        st.bar_chart(stock_df['MACD'] - stock_df['Signal_Line'])
+                else:
+                    st.warning("Insufficient data for MACD indicators.")
         else:
-            current_col.error(f"⚠️ Analysis failed for {t}. Check ticker symbol or data availability.")
+            current_col.error(f"⚠️ Analysis failed for {t}.")
