@@ -36,7 +36,7 @@ def process_stock(ticker, days):
         
         data = data.astype(float)
         
-        # --- MACD Logic (Fixed for Line 152/138 error) ---
+        # --- MACD Logic ---
         exp1 = data['Close'].ewm(span=12, adjust=False).mean()
         exp2 = data['Close'].ewm(span=26, adjust=False).mean()
         data['MACD'] = exp1 - exp2
@@ -66,25 +66,13 @@ def process_stock(ticker, days):
         curr_val = float(last_val['Close'])
         acc = model.score(X, y)
         
-        # IMPORTANT: Return 'data' along with others to avoid KeyError
+        # RETURN ALL 5 VALUES
         return data, df_clean, pred_val, curr_val, acc
         
     except Exception as e:
         return None
 
-# 4. ADMIN DASHBOARD
-if user_role == "Admin" and hash_password(password) == ADMIN_HASH:
-    st.title("👨‍✈️ Admin Dashboard")
-    track_list = ["AAPL", "TSLA", "SBIN.NS"]
-    cols = st.columns(len(track_list))
-    for i, t in enumerate(track_list):
-        res = process_stock(t, 200)
-        if res:
-            # Unpacking 5 values
-            data_adm, df_adm, pv_adm, cv_adm, ac_adm = res
-            cols[i].metric(t, f"${cv_adm:.2f}")
-
-# 5. MAIN APP
+# 4. MAIN APP LOGIC
 st.title("⚔️ AI Stock Battle")
 ticker1 = st.sidebar.text_input("Stock 1", value="GOOGL")
 ticker2 = st.sidebar.text_input("Stock 2", value="TSLA")
@@ -98,7 +86,7 @@ if st.sidebar.button("Run AI Analysis"):
         current_col = col_a if i == 0 else col_b
         
         if result:
-            # Proper unpacking of results
+            # Unpack values
             data, df_clean, pred_val, curr_val, acc = result
             diff = ((pred_val - curr_val) / curr_val) * 100
             
@@ -106,13 +94,13 @@ if st.sidebar.button("Run AI Analysis"):
                 st.header(f"📊 {t}")
                 st.metric("Predicted", f"${pred_val:.2f}", f"{diff:.2f}%")
                 
-                # Plotly Chart logic (Screenshot ab7917c3 reference)
+                # Plotly Chart
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_width=[0.3, 0.7])
                 fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"), row=1, col=1)
                 fig.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- MACD Chart Fix (Fixes Traceback error on line 152/138) ---
+                # --- MACD FIX (MUST BE INSIDE 'with current_col') ---
                 if 'MACD' in data.columns:
                     st.write("---")
                     st.subheader("🛠️ MACD Analysis")
